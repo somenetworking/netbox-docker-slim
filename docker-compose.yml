@@ -9,7 +9,7 @@ services:
     env_file: env/netbox.env
     user: 'unit:root'
     healthcheck:
-      start_period: 60s
+      start_period: 120s
       timeout: 3s
       interval: 15s
       test: "curl -f http://localhost:8080/api/ || exit 1"
@@ -30,7 +30,7 @@ services:
     - rqworker
     restart: unless-stopped
     healthcheck:
-      start_period: 20s
+      start_period: 60s
       timeout: 3s
       interval: 15s
       test: "ps -aux | grep -v grep | grep -q rqworker || exit 1"
@@ -43,7 +43,7 @@ services:
     - /opt/netbox/housekeeping.sh
     restart: unless-stopped
     healthcheck:
-      start_period: 20s
+      start_period: 60s
       timeout: 3s
       interval: 15s
       test: "ps -aux | grep -v grep | grep -q housekeeping || exit 1"

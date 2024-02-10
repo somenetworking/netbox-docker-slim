@@ -16,13 +16,13 @@ PLUGINS_CONFIG = {
     'netbox_proxbox': {
         'proxmox': 
             {
-                'domain': '192.168.255.4',    # May also be IP address
+                'domain': '10.0.0.0',    # May also be IP address
                 'http_port': 8006,
                 'user': 'netbox-ex@pam',   # always required
                 # 'password': '', # only required, if you don't want to use token based authentication
                 'token': {
                     'name': 'netbox-ex',	# Only type the token name and not the 'user@pam:tokenID' format
-                    'value': '123ca693-04b8-4db4-811f-2e603ea55bec'
+                    'value': ''
                 },
                 'ssl': False
             },
