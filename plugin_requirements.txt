@@ -1,5 +1,16 @@
-phonebox-plugin
-netbox-topology-views
-netbox-plugin-dns
-netbox-proxbox
-netbox-bgp
+phonebox-plugin==0.0.9
+netbox-topology-views==4.0.0
+netbox-plugin-dns==1.0.4
+netbox-proxbox==0.0.5
+netbox-bgp==0.13.2
+netbox-acls==1.6.1
+netbox-floorplan-plugin==0.4.0
+netbox-reorder-rack==1.1.1
+NbRisk==40.0.1
+# netbox-secrets==1.10.2 latest version is not up to date with netbox v4.0.6
+netbox-inventory==2.0.1
+# netbox-interface-synchronization
+netbox-kea==1.0.0
+netbox-lifecycle==1.0.4
+netbox-validity==2.3.2
+slurpit_netbox==0.9.43

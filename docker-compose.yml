@@ -1,7 +1,9 @@
-version: '3.4'
 services:
   netbox: &netbox
-    image: docker.io/netboxcommunity/netbox:${VERSION-v3.5-2.6.1}
+    image: netbox:latest-plugins
+    build:
+      context: .
+      dockerfile: Dockerfile-Plugins
     depends_on:
     - postgres
     - redis
@@ -9,10 +11,14 @@ services:
     env_file: env/netbox.env
     user: 'unit:root'
     healthcheck:
-      start_period: 120s
+      start_period: 360s
       timeout: 3s
       interval: 15s
       test: "curl -f http://localhost:8080/api/ || exit 1"
+    ports:
+      - "9080:8080"
+    networks:
+      - netbox-network
     volumes:
     - ./configuration:/etc/netbox/config:z,ro
     - netbox-media-files:/opt/netbox/netbox/media:z,rw
@@ -20,7 +26,10 @@ services:
     - netbox-scripts-files:/opt/netbox/netbox/scripts:z,rw
     restart: unless-stopped
   netbox-worker:
-    <<: *netbox
+    image: netbox:latest-plugins
+    build:
+      context: .
+      dockerfile: Dockerfile-Plugins
     depends_on:
       netbox:
         condition: service_healthy
@@ -29,19 +38,26 @@ services:
     - /opt/netbox/netbox/manage.py
     - rqworker
     restart: unless-stopped
+    networks:
+      - netbox-network
     healthcheck:
       start_period: 60s
       timeout: 3s
       interval: 15s
       test: "ps -aux | grep -v grep | grep -q rqworker || exit 1"
   netbox-housekeeping:
-    <<: *netbox
+    image: netbox:latest-plugins
+    build:
+      context: .
+      dockerfile: Dockerfile-Plugins
     depends_on:
       netbox:
         condition: service_healthy
     command:
     - /opt/netbox/housekeeping.sh
     restart: unless-stopped
+    networks:
+      - netbox-network
     healthcheck:
       start_period: 60s
       timeout: 3s
@@ -49,17 +65,23 @@ services:
       test: "ps -aux | grep -v grep | grep -q housekeeping || exit 1"
 
   netbox-devicetype-import-library:
-    image: ghcr.io/minitriga/netbox-device-type-library-import
+    build: 
+      context: /home/ashea/netbox-docker-slim/Device-Type-Library-Import
+      dockerfile: Device-Type-Library-Import-Dockerfile
     env_file: env/netbox-device-type-library-import.env
     depends_on:
       netbox:
         condition: service_healthy
+    networks:
+      - netbox-network
 
   # postgres
   postgres:
-    image: docker.io/postgres:15-alpine
+    image: docker.io/postgres:16-alpine
     env_file: env/postgres.env
     restart: unless-stopped
+    networks:
+      - netbox-network
     volumes:
     - netbox-postgres-data:/var/lib/postgresql/data
 
@@ -70,6 +92,8 @@ services:
     - sh
     - -c # this is to evaluate the $REDIS_PASSWORD from the env
     - redis-server --appendonly yes --requirepass $$REDIS_PASSWORD ## $$ because of docker-compose
+    networks:
+      - netbox-network
     env_file: env/redis.env
     restart: unless-stopped
     volumes:
@@ -80,10 +104,108 @@ services:
     - sh
     - -c # this is to evaluate the $REDIS_PASSWORD from the env
     - redis-server --requirepass $$REDIS_PASSWORD ## $$ because of docker-compose
+    networks:
+      - netbox-network
     env_file: env/redis-cache.env
     restart: unless-stopped
     volumes:
     - netbox-redis-cache-data:/data
+  slurpit-warehouse:
+    image: slurpit/warehouse:latest
+    container_name: slurpit-warehouse
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/services"]
+      interval: 10s
+      timeout: 10s
+      retries: 360
+    networks:
+      - slurpit-network
+    environment:
+      TZ: America/Chicago
+      WAREHOUSE_CALLBACK_SCANNER_URL: http://slurpit-portal/callback/scanner
+      WAREHOUSE_CALLBACK_SCANNER_TOKEN:
+      WAREHOUSE_CALLBACK_SCRAPER_URL: http://slurpit-portal/callback/scraper
+      WAREHOUSE_CALLBACK_SCRAPER_TOKEN:
+    volumes:
+      - slurpit-warehouse-mongodb:/var/lib/mongodb
+      - slurpit-warehouse-mongodb-logs:/var/log/mongodb
+      - slurpit-warehouse-logs:/logs
+    restart: always
+
+  slurpit-scraper:
+    image: slurpit/scraper:latest
+    container_name: slurpit-scraper
+    depends_on:
+      slurpit-warehouse:
+        condition: service_healthy
+    networks:
+      - slurpit-network
+    environment:
+      TZ: America/Chicago
+      SCRAPER_TIMEOUT: 20
+      SCRAPER_POOLSIZE: 4
+      SCRAPER_WAREHOUSE_URL: http://slurpit-warehouse
+    volumes:
+      - slurpit-scraper-logs:/logs
+    restart: always
+
+  slurpit-scanner:
+    image: slurpit/scanner:latest
+    container_name: slurpit-scanner
+    depends_on:
+      slurpit-warehouse:
+        condition: service_healthy
+    networks:
+      - slurpit-network
+    environment:
+      TZ: America/Chicago
+      SCANNER_POOLSIZE: 4
+      SCANNER_TIMEOUT: 10
+      SCANNER_WAREHOUSE_URL: http://slurpit-warehouse
+    volumes:
+      - slurpit-scanner-logs:/logs
+    restart: always
+
+  slurpit-portal:
+    image: slurpit/portal:latest
+    container_name: slurpit-portal
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - slurpit-network
+      - netbox-network
+    environment:
+      TZ: America/Chicago
+      PORTAL_BASE_URL: http://localhost
+      PORTAL_WAREHOUSE_URL: http://slurpit-warehouse
+    volumes:
+      - slurpit-portal-nginx-logs:/var/log/nginx/
+      - slurpit-portal-mysql-logs:/var/log/mysql/
+      - slurpit-portal-php-logs:/var/log/php/
+      - slurpit-certs:/etc/nginx/certs/
+      - slurpit-portal-db-portal:/var/lib/mysql
+    restart: always
+
+
+networks:
+  slurpit-network:
+    name: slurpit-network
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.1.0/24
+          ip_range: 172.28.1.0/24
+  netbox-network:
+    driver: bridge
+    name: netbox-network
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.2.0/24
+          ip_range: 172.28.2.0/24
+
 
 volumes:
   netbox-media-files:
@@ -97,4 +219,24 @@ volumes:
   netbox-reports-files:
     driver: local
   netbox-scripts-files:
+    driver: local
+  slurpit-portal-nginx-logs:
+    driver: local
+  slurpit-portal-mysql-logs:
+    driver: local
+  slurpit-portal-php-logs:
+    driver: local
+  slurpit-certs:
+    driver: local
+  slurpit-portal-db-portal:
+    driver: local
+  slurpit-scanner-logs:
+    driver: local
+  slurpit-scraper-logs:
+    driver: local
+  slurpit-warehouse-mongodb:
+    driver: local
+  slurpit-warehouse-mongodb-logs:
+    driver: local
+  slurpit-warehouse-logs:
     driver: local
